@@ -66,6 +66,13 @@ internal class MavenWrapperSupport {
       indicator?.apply { text = SyncBundle.message("maven.sync.wrapper.downloading.from", urlString) }
       try {
         HttpRequests.request(urlString)
+          .tuner{
+            val username = System.getenv("MVNW_USERNAME")
+            val password = System.getenv("MVNW_PASSWORD")
+            if (!username.isNullOrBlank() && !password.isNullOrBlank()) {
+              it.setRequestProperty("Authorization", "Basic " + Base64.getEncoder().encodeToString("$username:$password".toByteArray()))
+            }
+          }
           .forceHttps(false)
           .connectTimeout(30_000)
           .readTimeout(30_000)
@@ -185,7 +192,14 @@ internal class MavenWrapperSupport {
 
         val stream = ByteArrayInputStream(wrapperProperties.contentsToByteArray(true))
         properties.load(stream)
-        return properties.getProperty(DISTRIBUTION_URL_PROPERTY)
+        val configuredProperty = properties.getProperty(DISTRIBUTION_URL_PROPERTY)
+        val urlBase = System.getenv("MVNW_REPOURL")
+        val configuredUrlBaseEnd = configuredProperty?.indexOf("/org/apache/maven") ?: -1
+        if (!urlBase.isNullOrBlank() && configuredUrlBaseEnd >= 0) {
+          return (if (urlBase.endsWith('/')) urlBase.substring(0, urlBase.length - 1) else urlBase) + configuredProperty.substring(configuredUrlBaseEnd)
+        }
+
+        return configuredProperty
       }
       catch (e: IOException) {
         MavenLog.LOG.warn("exception reading wrapper url", e)
